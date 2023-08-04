@@ -1,6 +1,7 @@
-# https://realpython.com/pygame-a-primer/
 import random
 import sys
+import requests
+import json
 
 # import pygame + pygame locals
 import pygame
@@ -15,27 +16,36 @@ from pygame.locals import (
     KEYDOWN,
     QUIT,
 )
-from pygame_menu import sound, themes
+from pygame_menu import themes
 
 # initialize pygame
 pygame.mixer.init()
 pygame.init()
 pygame.font.init()
 
-# constants
+# ------------------------ constants ------------------------
+
+# window
 WIDTH = 500
 HEIGHT = 400
 WINDOW_SIZE = [WIDTH, HEIGHT]
+GROUND_HEIGHT = int(HEIGHT / 4)
+FLOOR = int(HEIGHT / 4 * 3)
 
+# timing
 FPS = 30
+SPEED = 6
 
+# events
 ADDOBSTACLE = pygame.USEREVENT + 1
 SCORECOUNT = ADDOBSTACLE + 1
 ADDCLOUD = SCORECOUNT + 1
 DURATION = ADDCLOUD + 1
 
+# menu info
 INFO = ["Developed by Fariah Saleh", "2023"]
 
+# themes
 DEFAULT = themes.THEME_DEFAULT.copy()
 BLUE = themes.THEME_BLUE.copy()
 DARK = themes.THEME_DARK.copy()
@@ -43,11 +53,21 @@ GREEN = themes.THEME_GREEN.copy()
 ORANGE = themes.THEME_ORANGE.copy()
 SOLARIZED = themes.THEME_SOLARIZED.copy()
 
+# colors
+BLACK = (0, 0, 0)
+WHITE = (255, 255, 255)
+LIGHT_GRAY = (100, 100, 100)
+DARK_GRAY = (50, 50, 50)
+
+OBJ_COLOR = DARK_GRAY
+GROUND_COLOR = BLACK
+
+# ------------------------ setup ------------------------
+
 # set screen size and title
 screen = pygame.display.set_mode(WINDOW_SIZE)
 pygame.display.set_caption("Runner game")
 font = pygame.font.Font(None, 28)
-
 clock = pygame.time.Clock()
 
 # defaults
@@ -55,6 +75,7 @@ window_theme = DARK
 game_theme = "default"
 sound = True
 volume = 10
+high_score = 0
 
 # background music (change later)
 pygame.mixer.music.load("Apoxode_-_Electric_1.mp3")
@@ -68,6 +89,7 @@ collision_sound = pygame.mixer.Sound("Collision.ogg")
 playing_music = True
 playing_sound_effects = True
 
+
 # ------------------------ sprites ------------------------
 
 
@@ -79,48 +101,40 @@ class Player(pygame.sprite.Sprite):
             self.surf = pygame.image.load("jet.png").convert()
         else:
             self.surf = pygame.image.load("missile.png").convert()
-        self.surf.set_colorkey((255, 255, 255), RLEACCEL)
+        self.surf.set_colorkey(WHITE, RLEACCEL)
         self.rect = self.surf.get_rect()
+        self.rect.left = 50
+        self.rect.bottom = FLOOR
 
     def update(self, pressed_keys):
-        if pressed_keys[K_UP]:
-            self.rect.move_ip(0, -5)
-            move_up_sound.play()
-        if pressed_keys[K_DOWN]:
-            self.rect.move_ip(0, 5)
-            move_down_sound.play()
-        if pressed_keys[K_LEFT]:
-            self.rect.move_ip(-5, 0)
-        if pressed_keys[K_RIGHT]:
-            self.rect.move_ip(5, 0)
-
-        # Keep player on screen
         if self.rect.left < 0:
             self.rect.left = 0
         if self.rect.right > WIDTH:
             self.rect.right = WIDTH
         if self.rect.top <= 38:
             self.rect.top = 38
-        if self.rect.bottom >= HEIGHT:
-            self.rect.bottom = HEIGHT
+        if self.rect.bottom >= FLOOR:
+            self.rect.bottom = FLOOR
 
 
 # obstacle sprite class
 class Obstacle(pygame.sprite.Sprite):
     def __init__(self):
         super(Obstacle, self).__init__()
+        random_num = random.randint(0, 1)
         if game_theme == "default":
-            self.surf = pygame.image.load("missile.png").convert()
+            if random_num == 0:
+                self.surf = pygame.image.load("missile.png").convert()
+            else:
+                self.surf = pygame.image.load("missile.png").convert()
         else:
-            self.surf = pygame.image.load("jet.png").convert()
-        self.surf.set_colorkey((255, 255, 255), RLEACCEL)
-        self.rect = self.surf.get_rect(
-            center=(
-                random.randint(WIDTH + 20, WIDTH + 100),
-                random.randint(38, HEIGHT),
-            )
-        )
-        self.speed = random.randint(5, 10)
+            if random_num == 0:
+                self.surf = pygame.image.load("jet.png").convert()
+            else:
+                self.surf = pygame.image.load("jet.png").convert()
+        self.surf.set_colorkey(WHITE, RLEACCEL)
+        self.rect = self.surf.get_rect(center=(WIDTH + 20, FLOOR - 10))
+        self.speed = SPEED
 
     # move obstacle based on its speed
     # remove when it passes off screen
@@ -138,11 +152,19 @@ class Cloud(pygame.sprite.Sprite):
             self.surf = pygame.image.load("cloud.png").convert()
         else:
             self.surf = pygame.image.load("cloud.png").convert()
-        self.surf.set_colorkey((0, 0, 0), RLEACCEL)
+
+        self.surf.set_colorkey(BLACK, RLEACCEL)
+        
+        # var = pygame.PixelArray(self.surf)
+        # var.replace(WHITE, OBJ_COLOR)
+        # del var
+
         self.rect = self.surf.get_rect(
             center=(
                 random.randint(WIDTH + 20, WIDTH + 100),
-                random.randint(38, HEIGHT),
+                random.randint(
+                    38, int(HEIGHT - GROUND_HEIGHT - (1 / 2) * self.surf.get_height())
+                ),
             )
         )
 
@@ -158,13 +180,24 @@ class Cloud(pygame.sprite.Sprite):
 def play_game():
     main_menu.disable()
 
+    global high_score
     score = min = sec = 0
 
+    obstacle_interval = random.randint(850, 1200)
+
     # set event timers
-    pygame.time.set_timer(ADDOBSTACLE, 250)
+    pygame.time.set_timer(ADDOBSTACLE, obstacle_interval)
     pygame.time.set_timer(ADDCLOUD, 700)
     pygame.time.set_timer(SCORECOUNT, 250)
     pygame.time.set_timer(DURATION, 1000)
+
+    ground = pygame.Surface((WIDTH, GROUND_HEIGHT))
+    ground.fill((160,82,45))
+
+    # jump physics
+    v = SPEED  # velocity
+    m = 1  # mass
+    is_jumping = False
 
     # initialize player
     player = Player()
@@ -189,6 +222,8 @@ def play_game():
                 new_obstacle = Obstacle()
                 obstacles.add(new_obstacle)
                 all_sprites.add(new_obstacle)
+                obstacle_interval = random.randint(790, 1600)
+                pygame.time.set_timer(ADDOBSTACLE, obstacle_interval)
             # add cloud to screen
             elif event.type == ADDCLOUD:
                 new_cloud = Cloud()
@@ -208,25 +243,42 @@ def play_game():
         # get pressed keys
         pressed_keys = pygame.key.get_pressed()
 
-        # update player position
-        player.update(pressed_keys)
+        if pressed_keys[K_UP]:
+            is_jumping = True
+
+        if is_jumping == True:
+            F = (1 / 2) * m * (v**2)
+            player.rect.bottom -= F
+            v -= 0.5
+
+            if v < 0:
+                m = -1
+            if v <= -SPEED:
+                is_jumping = False
+                player.rect.bottom = FLOOR
+                v = SPEED
+                m = 1
 
         # update obstacle positions
         obstacles.update()
         clouds.update()
 
-        screen.fill((100, 100, 100))
+        screen.fill(bg_color)
+        screen.blit(ground, (0, HEIGHT / 4 * 3))
 
         # draw all sprites
-        for sprite in all_sprites:
+        for sprite in clouds:
             screen.blit(sprite.surf, sprite.rect)
+        for sprite in obstacles:
+            screen.blit(sprite.surf, sprite.rect)
+        screen.blit(player.surf, player.rect)
 
         # display score
-        score_text = font.render(f"Score: {score}", True, (255, 255, 255))
+        score_text = font.render(f"Score: {score}", True, WHITE)
         screen.blit(score_text, (10, 10))
 
         # display game duration
-        duration_text = font.render(f"Time: {min}:{sec}", True, (255, 255, 255))
+        duration_text = font.render(f"Time: {min}:{sec}", True, WHITE)
         d_text_width = font.size(f"Time: {min}:{sec}")[0]
         screen.blit(duration_text, (WIDTH - d_text_width - 10, 10))
 
@@ -234,13 +286,23 @@ def play_game():
 
         # end game when player collides with an obstacle
         if pygame.sprite.spritecollideany(player, obstacles):
+            # save score
+            if score > high_score:
+                high_score = score
+
+            # kill sprites
             for sp in all_sprites:
                 sp.kill()
+
+            # turn off sounds
             move_up_sound.stop()
             move_down_sound.stop()
             collision_sound.play()
+
+            # create and display game end menu
             end_menu = menu.create_end_menu(score, min, sec)
             end_menu.mainloop(screen)
+
             running = False
 
         # tick
@@ -327,6 +389,8 @@ class Menu:
 
         end_menu.add.label(f"Score: {score}")
         end_menu.add.label(f"Duration: {min}:{sec}")
+        if high_score > 0:
+            end_menu.add.label(f"High score: {high_score}")
         end_menu.add.button("Try again", restart)
         end_menu.add.button("Back to main menu", return_to_main_menu)
         end_menu.add.button("Quit", pygame.quit)
@@ -400,7 +464,7 @@ class Menu:
             range_box_single_slider=True,
             onchange=adjust_volume,
         )
-        settings_menu.add.button("Return to menu", pygame_menu.events.BACK)
+        settings_menu.add.button("Return to main menu", pygame_menu.events.BACK)
 
         # info submenu
         info_menu = pygame_menu.Menu(
@@ -425,14 +489,39 @@ class Menu:
         main_menu.add.button("Quit", pygame.quit)
         return main_menu
 
+def get_weather():
+    p = {'key': '3864d0d26a9c4deab5a221512230308', 'q':'92620','aqi':'no'}
+    r = requests.get('http://api.weatherapi.com/v1/current.json', params=p)
+    
+    # print(json.dumps(r.json(), indent = 4))
+    
+    global current_temp_f
+    global bg_color
+    bg_color = LIGHT_GRAY
+
+    current_temp_f = int(r.json()["current"]["temp_f"])
+    current_time = int(r.json()["location"]["localtime"][11:13])
+    print(current_time)
+
+    # change background color based on temp/time
+    if current_temp_f > 70 and current_time > 7 and current_time < 18:
+        bg_color = (135, 206, 250)
+    elif current_time > 7 and current_time < 18:
+        bg_color = (50,50,150)
+    elif current_time > 4 and current_time < 7:
+        bg_color = (255, 200, 200)
+    else:
+        bg_color = (20,20,85)
 
 # ------------------------ main ------------------------
 
 
 def main():
+    global menu
     global main_menu
     global menu
-
+    
+    get_weather()
     # create and display menu
     menu = Menu()
     main_menu = menu.create_main_menu(window_theme)
