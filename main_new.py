@@ -1,7 +1,7 @@
 import random
 import sys
 import requests
-import json
+import os
 
 # import pygame + pygame locals
 import pygame
@@ -26,21 +26,25 @@ pygame.font.init()
 # ------------------------ constants ------------------------
 
 # window
-WIDTH = 500
-HEIGHT = 400
+WIDTH = 900
+HEIGHT = 600
 WINDOW_SIZE = [WIDTH, HEIGHT]
 GROUND_HEIGHT = int(HEIGHT / 4)
 FLOOR = int(HEIGHT / 4 * 3)
 
 # timing
 FPS = 30
-SPEED = 6
+JUMP_SPEED = 6
+DEFAULT_SPEED = 9
+speed = DEFAULT_SPEED
 
 # events
 ADDOBSTACLE = pygame.USEREVENT + 1
 SCORECOUNT = ADDOBSTACLE + 1
 ADDCLOUD = SCORECOUNT + 1
 DURATION = ADDCLOUD + 1
+SPEEDUP = DURATION + 1
+FRAMECHANGE = SPEEDUP + 1
 
 # menu info
 INFO = ["Developed by Fariah Saleh", "2023"]
@@ -58,9 +62,14 @@ BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
 LIGHT_GRAY = (100, 100, 100)
 DARK_GRAY = (50, 50, 50)
+BROWN = (140,62,25)
+LIGHT_BLUE = (135, 206, 250)
+BLUE = (50,50,150)
+DARK_BLUE = (20,20,85)
+PINK = (255, 200, 200)
 
 OBJ_COLOR = DARK_GRAY
-GROUND_COLOR = BLACK
+BG_COLOR = BLACK
 
 # ------------------------ setup ------------------------
 
@@ -68,26 +77,50 @@ GROUND_COLOR = BLACK
 screen = pygame.display.set_mode(WINDOW_SIZE)
 pygame.display.set_caption("Runner game")
 font = pygame.font.Font(None, 28)
-clock = pygame.time.Clock()
+clock = pygame.time.Clock() 
 
 # defaults
 window_theme = DARK
 game_theme = "default"
 sound = True
-volume = 10
+volume = 0
 high_score = 0
 
 # background music (change later)
-pygame.mixer.music.load("Apoxode_-_Electric_1.mp3")
-pygame.mixer.music.play(loops=-1)
+pygame.mixer.music.load("main_title.mp3")
 
 # sound effects
 move_up_sound = pygame.mixer.Sound("Rising_putter.ogg")
-move_down_sound = pygame.mixer.Sound("Falling_putter.ogg")
 collision_sound = pygame.mixer.Sound("Collision.ogg")
 
 playing_music = True
 playing_sound_effects = True
+
+
+# ------------------------ images ------------------------
+
+background_images = []
+run_images = []
+jump_images = []
+images = [background_images, run_images, jump_images]
+folder_path = ["images/background", "images/run", "images/jump", "images/runshoot", "images/jumpshoot"]
+
+for (image_list, path) in zip(images, folder_path):
+    for file in os.listdir(path):
+        image = pygame.image.load(os.path.join(path,file)).convert_alpha()
+        image_list.append(image)
+
+bg_width = background_images[0].get_width()
+bg_height = background_images[0].get_height()
+bg_scale = bg_height / bg_width
+background_images = [pygame.transform.scale(layer, (WIDTH, WIDTH*bg_scale)) for layer in background_images]
+
+ground_img = pygame.image.load("images/ground.png").convert_alpha() #(24,20,37), (38,43,68), (58,68,102)
+gr_width = ground_img.get_width()
+gr_height = ground_img.get_height()
+ground_img = pygame.transform.scale(ground_img, (int(HEIGHT/4), int(HEIGHT/4)))
+ground_width = ground_img.get_width()
+ground_n = (WIDTH // ground_width) +1
 
 
 # ------------------------ sprites ------------------------
@@ -98,23 +131,43 @@ class Player(pygame.sprite.Sprite):
     def __init__(self):
         super(Player, self).__init__()
         if game_theme == "default":
-            self.surf = pygame.image.load("jet.png").convert()
+            self.surf = run_images[0]
         else:
-            self.surf = pygame.image.load("missile.png").convert()
-        self.surf.set_colorkey(WHITE, RLEACCEL)
+            self.surf = pygame.image.load("jet.png").convert()
         self.rect = self.surf.get_rect()
-        self.rect.left = 50
+        self.rect.left = int(WIDTH/7)
         self.rect.bottom = FLOOR
+        self.wait = 0
 
-    def update(self, pressed_keys):
-        if self.rect.left < 0:
-            self.rect.left = 0
-        if self.rect.right > WIDTH:
-            self.rect.right = WIDTH
-        if self.rect.top <= 38:
-            self.rect.top = 38
-        if self.rect.bottom >= FLOOR:
-            self.rect.bottom = FLOOR
+    def change(self, num, img = run_images):
+        bottom = self.rect.bottom
+        if img:
+            self.surf = img[num]
+        self.rect = self.surf.get_rect()
+        self.rect.left = int(WIDTH/7)
+        self.rect.bottom = bottom
+
+    def update(self, v, m, is_jumping):
+        # while character is jumping
+        if is_jumping == True:
+            F = (1 / 2) * m * (v**2)
+            self.rect.bottom -= F
+            v -= 0.5
+
+            if v > 0:
+                self.change(0,jump_images)
+            if v < 0:
+                m = -1
+                self.wait += 1
+                if self.wait > 6:
+                    self.change(1,jump_images)
+            if v <= -JUMP_SPEED:
+                is_jumping = False
+                self.rect.bottom = FLOOR
+                v = JUMP_SPEED
+                m = 1
+                self.wait = 0
+        return v, m, is_jumping
 
 
 # obstacle sprite class
@@ -132,9 +185,10 @@ class Obstacle(pygame.sprite.Sprite):
                 self.surf = pygame.image.load("jet.png").convert()
             else:
                 self.surf = pygame.image.load("jet.png").convert()
+
         self.surf.set_colorkey(WHITE, RLEACCEL)
         self.rect = self.surf.get_rect(center=(WIDTH + 20, FLOOR - 10))
-        self.speed = SPEED
+        self.speed = speed
 
     # move obstacle based on its speed
     # remove when it passes off screen
@@ -180,7 +234,13 @@ class Cloud(pygame.sprite.Sprite):
 def play_game():
     main_menu.disable()
 
+    pygame.mixer.music.play(loops=-1)
+
     global high_score
+    global speed 
+    global images
+    global bg_width
+    speed = DEFAULT_SPEED
     score = min = sec = 0
 
     obstacle_interval = random.randint(850, 1200)
@@ -190,17 +250,27 @@ def play_game():
     pygame.time.set_timer(ADDCLOUD, 700)
     pygame.time.set_timer(SCORECOUNT, 250)
     pygame.time.set_timer(DURATION, 1000)
+    pygame.time.set_timer(SPEEDUP, 4000)
+    pygame.time.set_timer(FRAMECHANGE, 75)
 
-    ground = pygame.Surface((WIDTH, GROUND_HEIGHT))
-    ground.fill((160,82,45))
+    ground_pos = []
+    for i in range(ground_n):
+        ground_pos.append(i*ground_width)
+
+    layers = len(background_images)
+    bg_pos = [0] * layers
+    b = [WIDTH] * layers
+    bg_pos = bg_pos + b
+    bg_speed = [1,2,3,4]
 
     # jump physics
-    v = SPEED  # velocity
+    v = JUMP_SPEED  # velocity
     m = 1  # mass
     is_jumping = False
 
     # initialize player
     player = Player()
+    sp_num = 0
 
     # create sprite groups
     obstacles = pygame.sprite.Group()
@@ -211,12 +281,22 @@ def play_game():
     running = True
     # main game loop
     while running:
+
+        clock.tick(FPS)
+
         # for every event in event queue
         for event in pygame.event.get():
             # quit game
             if event.type == QUIT:
                 pygame.quit()
                 sys.exit()
+            # change player frame
+            elif event.type == FRAMECHANGE:
+                if is_jumping == False:
+                    if sp_num >= len(run_images):
+                        sp_num = 0
+                    player.change(sp_num)
+                    sp_num += 1
             # add new obstacle to screen
             elif event.type == ADDOBSTACLE:
                 new_obstacle = Obstacle()
@@ -225,10 +305,12 @@ def play_game():
                 obstacle_interval = random.randint(790, 1600)
                 pygame.time.set_timer(ADDOBSTACLE, obstacle_interval)
             # add cloud to screen
-            elif event.type == ADDCLOUD:
-                new_cloud = Cloud()
-                clouds.add(new_cloud)
-                all_sprites.add(new_cloud)
+            # elif event.type == ADDCLOUD:
+            #     new_cloud = Cloud()
+            #     clouds.add(new_cloud)
+            #     all_sprites.add(new_cloud)
+            elif event.type == SPEEDUP:
+                    speed += 0.25
             # update score count
             elif event.type == SCORECOUNT:
                 score += 1
@@ -243,32 +325,62 @@ def play_game():
         # get pressed keys
         pressed_keys = pygame.key.get_pressed()
 
+        if pressed_keys[K_ESCAPE]:
+            # kill sprites
+            for sp in all_sprites:
+                sp.kill()
+
+            # turn off sounds and music
+            move_up_sound.stop()
+            collision_sound.play()
+
+            pygame.mixer.music.stop()
+            playing_music = False
+
+            # open main menu
+            main_menu.enable()
+
+            running = False
+
+        # player jumps with up keypress
         if pressed_keys[K_UP]:
             is_jumping = True
 
-        if is_jumping == True:
-            F = (1 / 2) * m * (v**2)
-            player.rect.bottom -= F
-            v -= 0.5
-
-            if v < 0:
-                m = -1
-            if v <= -SPEED:
-                is_jumping = False
-                player.rect.bottom = FLOOR
-                v = SPEED
-                m = 1
+        # update player
+        v,m,is_jumping = player.update(v,m,is_jumping)
 
         # update obstacle positions
         obstacles.update()
-        clouds.update()
+        # clouds.update()
 
-        screen.fill(bg_color)
-        screen.blit(ground, (0, HEIGHT / 4 * 3))
+        # fill background
+        screen.fill(BG_COLOR)
+
+
+        # bg layer positions
+        for i in range(layers):
+            if bg_pos[i] <= -WIDTH:
+                bg_pos[i] = WIDTH
+            if bg_pos[i + layers] <= -WIDTH:
+                bg_pos[i + layers] = WIDTH
+            if bg_pos[i] < -background_images[i].get_width():
+                bg_pos[i] = bg_pos[i + layers] + background_images[i].get_width()
+            screen.blit(background_images[i], (bg_pos[i], 0))
+            screen.blit(background_images[i], (bg_pos[i + layers], 0))
+            bg_pos[i] -= bg_speed[i]
+            bg_pos[i + layers] -= bg_speed[i]
+
+        # ground
+        for i in range(ground_n):
+            screen.blit(ground_img, (ground_pos[i], HEIGHT/4*3))
+            ground_pos[i] -= speed
+            if ground_pos[i] <= -ground_width:
+                ground_pos[i] = WIDTH
+            screen.blit(ground_img, (ground_pos[i], HEIGHT/4*3))        
 
         # draw all sprites
-        for sprite in clouds:
-            screen.blit(sprite.surf, sprite.rect)
+        # for sprite in clouds:
+        #     screen.blit(sprite.surf, sprite.rect)
         for sprite in obstacles:
             screen.blit(sprite.surf, sprite.rect)
         screen.blit(player.surf, player.rect)
@@ -294,10 +406,12 @@ def play_game():
             for sp in all_sprites:
                 sp.kill()
 
-            # turn off sounds
+            # turn off sounds and music
             move_up_sound.stop()
-            move_down_sound.stop()
             collision_sound.play()
+
+            pygame.mixer.music.stop()
+            playing_music = False
 
             # create and display game end menu
             end_menu = menu.create_end_menu(score, min, sec)
@@ -305,40 +419,35 @@ def play_game():
 
             running = False
 
-        # tick
-        clock.tick(FPS)
-
 
 # ------------------------ options ------------------------
 
 
 def toggle_music(selected):
     if selected == False:
-        pygame.mixer.music.stop()
+        pygame.mixer.music.set_volume(0)
         playing_music = False
     else:
-        pygame.mixer.music.play(loops=-1)
+        pygame.mixer.music.set_volume(volume)
         playing_music = True
 
 
 def toggle_sound_effects(selected):
     if selected == False:
         move_up_sound.set_volume(0)
-        move_down_sound.set_volume(0)
         collision_sound.set_volume(0)
         playing_sound_effects = False
     else:
         move_up_sound.set_volume(volume)
-        move_down_sound.set_volume(volume)
         collision_sound.set_volume(volume)
         playing_sound_effects = True
 
 
 def adjust_volume(selected):
-    volume = selected
+    global volume
+    volume = selected/10
     pygame.mixer.music.set_volume(volume)
     move_up_sound.set_volume(volume)
-    move_down_sound.set_volume(volume)
     collision_sound.set_volume(volume)
 
 
@@ -350,7 +459,6 @@ def change_window_theme(selected):
 
 def change_game_theme(selected):
     game_theme = selected
-    print(game_theme)
 
 
 def return_to_main_menu():
@@ -423,6 +531,7 @@ class Menu:
         )
         game_theme_menu.add.button("Default", lambda: change_game_theme("default"))
         game_theme_menu.add.button("Other", lambda: change_game_theme("other"))
+        game_theme_menu.add.button("Back to main menu", return_to_main_menu)
 
         # window theme submenu
         window_theme_menu = pygame_menu.Menu(
@@ -436,6 +545,7 @@ class Menu:
         window_theme_menu.add.button(
             "Solarized", lambda: change_window_theme(SOLARIZED)
         )
+        window_theme_menu.add.button("Back to main menu", return_to_main_menu)
 
         # settings submenu
         settings_menu = pygame_menu.Menu(
@@ -444,22 +554,22 @@ class Menu:
         settings_menu.add.button("Window theme", window_theme_menu)
         settings_menu.add.button("Game theme", game_theme_menu)
         settings_menu.add.toggle_switch(
-            "Music",
+            title="Music",
             default=playing_music,
             state_text=("Off", "On"),
             onchange=toggle_music,
         )
         settings_menu.add.toggle_switch(
-            "Sound effects",
+            title="Sound effects",
             default=playing_sound_effects,
             state_text=("Off", "On"),
             onchange=toggle_sound_effects,
         )
         settings_menu.add.range_slider(
-            "Volume",
-            volume,
-            [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-            1,
+            title="Volume",
+            default=volume*10,
+            range_values=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            increment=1,
             width=275,
             range_box_single_slider=True,
             onchange=adjust_volume,
@@ -489,29 +599,6 @@ class Menu:
         main_menu.add.button("Quit", pygame.quit)
         return main_menu
 
-def get_weather():
-    p = {'key': '3864d0d26a9c4deab5a221512230308', 'q':'92620','aqi':'no'}
-    r = requests.get('http://api.weatherapi.com/v1/current.json', params=p)
-    
-    # print(json.dumps(r.json(), indent = 4))
-    
-    global current_temp_f
-    global bg_color
-    bg_color = LIGHT_GRAY
-
-    current_temp_f = int(r.json()["current"]["temp_f"])
-    current_time = int(r.json()["location"]["localtime"][11:13])
-    print(current_time)
-
-    # change background color based on temp/time
-    if current_temp_f > 70 and current_time > 7 and current_time < 18:
-        bg_color = (135, 206, 250)
-    elif current_time > 7 and current_time < 18:
-        bg_color = (50,50,150)
-    elif current_time > 4 and current_time < 7:
-        bg_color = (255, 200, 200)
-    else:
-        bg_color = (20,20,85)
 
 # ------------------------ main ------------------------
 
@@ -521,7 +608,7 @@ def main():
     global main_menu
     global menu
     
-    get_weather()
+    # get_weather()
     # create and display menu
     menu = Menu()
     main_menu = menu.create_main_menu(window_theme)

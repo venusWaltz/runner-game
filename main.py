@@ -215,7 +215,7 @@ def play_game():
         obstacles.update()
         clouds.update()
 
-        screen.fill((100, 100, 100))
+        screen.fill((135, 206, 250))
 
         # draw all sprites
         for sprite in all_sprites:
