@@ -1,19 +1,13 @@
 import random
 import sys
-import requests
 import os
 
 # import pygame + pygame locals
 import pygame
 import pygame_menu
 from pygame.locals import (
-    RLEACCEL,
-    K_DOWN,
     K_ESCAPE,
-    K_LEFT,
-    K_RIGHT,
     K_UP,
-    KEYDOWN,
     QUIT,
 )
 from pygame_menu import themes
@@ -26,8 +20,8 @@ pygame.font.init()
 # ------------------------ constants ------------------------
 
 # window
-WIDTH = 900
-HEIGHT = 600
+WIDTH = 750
+HEIGHT = 500
 WINDOW_SIZE = [WIDTH, HEIGHT]
 GROUND_HEIGHT = int(HEIGHT / 4)
 FLOOR = int(HEIGHT / 4 * 3)
@@ -83,7 +77,7 @@ clock = pygame.time.Clock()
 window_theme = DARK
 game_theme = "default"
 sound = True
-volume = 0
+volume = 1
 high_score = 0
 
 # background music (change later)
@@ -102,8 +96,9 @@ playing_sound_effects = True
 background_images = []
 run_images = []
 jump_images = []
-images = [background_images, run_images, jump_images]
-folder_path = ["images/background", "images/run", "images/jump", "images/runshoot", "images/jumpshoot"]
+obs_images = []
+images = [background_images, run_images, jump_images, obs_images]
+folder_path = ["images/background", "images/run", "images/jump", "images/obs"]
 
 for (image_list, path) in zip(images, folder_path):
     for file in os.listdir(path):
@@ -113,15 +108,14 @@ for (image_list, path) in zip(images, folder_path):
 bg_width = background_images[0].get_width()
 bg_height = background_images[0].get_height()
 bg_scale = bg_height / bg_width
-background_images = [pygame.transform.scale(layer, (WIDTH, WIDTH*bg_scale)) for layer in background_images]
+background_images = [pygame.transform.scale(layer, (WIDTH, int(WIDTH*bg_scale))) for layer in background_images]
 
 ground_img = pygame.image.load("images/ground.png").convert_alpha() #(24,20,37), (38,43,68), (58,68,102)
 gr_width = ground_img.get_width()
 gr_height = ground_img.get_height()
-ground_img = pygame.transform.scale(ground_img, (int(HEIGHT/4), int(HEIGHT/4)))
+ground_img = pygame.transform.scale(ground_img, (GROUND_HEIGHT, GROUND_HEIGHT))
 ground_width = ground_img.get_width()
-ground_n = (WIDTH // ground_width) +1
-
+ground_n = (WIDTH // ground_width) + 1
 
 # ------------------------ sprites ------------------------
 
@@ -139,6 +133,7 @@ class Player(pygame.sprite.Sprite):
         self.rect.bottom = FLOOR
         self.wait = 0
 
+    # animate walk cycle
     def change(self, num, img = run_images):
         bottom = self.rect.bottom
         if img:
@@ -174,58 +169,38 @@ class Player(pygame.sprite.Sprite):
 class Obstacle(pygame.sprite.Sprite):
     def __init__(self):
         super(Obstacle, self).__init__()
-        random_num = random.randint(0, 1)
-        if game_theme == "default":
-            if random_num == 0:
-                self.surf = pygame.image.load("missile.png").convert()
-            else:
-                self.surf = pygame.image.load("missile.png").convert()
-        else:
-            if random_num == 0:
-                self.surf = pygame.image.load("jet.png").convert()
-            else:
-                self.surf = pygame.image.load("jet.png").convert()
+        self.surf = pygame.image.load("images/obs/obs_6.png").convert_alpha()
 
-        self.surf.set_colorkey(WHITE, RLEACCEL)
-        self.rect = self.surf.get_rect(center=(WIDTH + 20, FLOOR - 10))
+        # self.surf.set_colorkey(WHITE, RLEACCEL)
+        self.rect = self.surf.get_rect(center=(WIDTH + 20, FLOOR - int(self.surf.get_height()/3*2)))
         self.speed = speed
+
+        self.num = 1
 
     # move obstacle based on its speed
     # remove when it passes off screen
     def update(self):
+        center = self.rect.center
+        if self.num == 4:
+            self.surf =  obs_images[8]
+            self.rect = self.surf.get_rect(center=center)
+        elif self.num == 8:
+            self.surf =  obs_images[9]
+            self.rect = self.surf.get_rect(center=center)
+        elif self.num == 12:
+            self.surf = obs_images[10]
+            self.rect = self.surf.get_rect(center=center)
+        elif self.num == 16:
+            self.surf = obs_images[11]
+            self.rect = self.surf.get_rect(center=center)
+        elif self.num == 20:
+            self.surf = obs_images[10]
+            self.rect = self.surf.get_rect(center=center)
+            self.num = -1
         self.rect.move_ip(-self.speed, 0)
         if self.rect.right < 0:
             self.kill()
-
-
-# cloud sprite class
-class Cloud(pygame.sprite.Sprite):
-    def __init__(self):
-        super(Cloud, self).__init__()
-        if game_theme == "default":
-            self.surf = pygame.image.load("cloud.png").convert()
-        else:
-            self.surf = pygame.image.load("cloud.png").convert()
-
-        self.surf.set_colorkey(BLACK, RLEACCEL)
-        
-        # var = pygame.PixelArray(self.surf)
-        # var.replace(WHITE, OBJ_COLOR)
-        # del var
-
-        self.rect = self.surf.get_rect(
-            center=(
-                random.randint(WIDTH + 20, WIDTH + 100),
-                random.randint(
-                    38, int(HEIGHT - GROUND_HEIGHT - (1 / 2) * self.surf.get_height())
-                ),
-            )
-        )
-
-    def update(self):
-        self.rect.move_ip(-5, 0)
-        if self.rect.right < 0:
-            self.kill()
+        self.num += 1
 
 
 # ------------------------ play ------------------------
@@ -261,7 +236,7 @@ def play_game():
     bg_pos = [0] * layers
     b = [WIDTH] * layers
     bg_pos = bg_pos + b
-    bg_speed = [1,2,3,4]
+    bg_speed = [1,2,4,6]
 
     # jump physics
     v = JUMP_SPEED  # velocity
@@ -304,11 +279,7 @@ def play_game():
                 all_sprites.add(new_obstacle)
                 obstacle_interval = random.randint(790, 1600)
                 pygame.time.set_timer(ADDOBSTACLE, obstacle_interval)
-            # add cloud to screen
-            # elif event.type == ADDCLOUD:
-            #     new_cloud = Cloud()
-            #     clouds.add(new_cloud)
-            #     all_sprites.add(new_cloud)
+            # increase speed
             elif event.type == SPEEDUP:
                     speed += 0.25
             # update score count
@@ -372,15 +343,12 @@ def play_game():
 
         # ground
         for i in range(ground_n):
-            screen.blit(ground_img, (ground_pos[i], HEIGHT/4*3))
+            screen.blit(ground_img, (ground_pos[i], FLOOR))
             ground_pos[i] -= speed
             if ground_pos[i] <= -ground_width:
                 ground_pos[i] = WIDTH
-            screen.blit(ground_img, (ground_pos[i], HEIGHT/4*3))        
 
         # draw all sprites
-        # for sprite in clouds:
-        #     screen.blit(sprite.surf, sprite.rect)
         for sprite in obstacles:
             screen.blit(sprite.surf, sprite.rect)
         screen.blit(player.surf, player.rect)
@@ -608,7 +576,6 @@ def main():
     global main_menu
     global menu
     
-    # get_weather()
     # create and display menu
     menu = Menu()
     main_menu = menu.create_main_menu(window_theme)
