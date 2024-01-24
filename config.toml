@@ -1,0 +1,14 @@
+# config.toml
+
+info = ["Developed by Fariah Saleh", "2023"]
+
+[paths]
+background = "images/background"
+run = "images/run"
+jump = "images/jump"
+obstacle = "images/obs"
+glow = "images/glow.png"
+ground = "images/ground.png"
+jump_sound = "sounds/rising.ogg"
+collision_sound = "sounds/collision.ogg"
+background_music = "sounds/main_title.mp3"

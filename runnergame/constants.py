@@ -1,0 +1,54 @@
+# constants.py
+
+import pygame
+from pygame_menu import themes 
+
+# Window
+TITLE = "Runner game"
+GAME_SCALE = 1
+game_scale = GAME_SCALE if GAME_SCALE > 1 else 1
+WIDTH = int(750 * GAME_SCALE)
+HEIGHT = int(500 * GAME_SCALE)
+FONTPT = int(28 * game_scale)
+WINDOW_SIZE = [WIDTH, HEIGHT]
+GROUND_DIMENSION_FACTOR = 0.25
+GROUND_DIM = int(HEIGHT * GROUND_DIMENSION_FACTOR)
+FLOOR = HEIGHT - GROUND_DIM
+
+# Game mechanics
+FPS = 30
+JUMP_SPEED = int(5 + 2 * GAME_SCALE)
+DEFAULT_SPEED = int(9 * GAME_SCALE)
+SPEED_INCREMENT = 0.35
+
+# Colors
+BLACK = (0, 0, 0)
+WHITE = (255, 255, 255)
+
+# Themes
+DEFAULT = themes.THEME_DEFAULT.copy()
+BLUE = themes.THEME_BLUE.copy()
+DARK = themes.THEME_DARK.copy()
+GREEN = themes.THEME_GREEN.copy()
+ORANGE = themes.THEME_ORANGE.copy()
+SOLARIZED = themes.THEME_SOLARIZED.copy()
+
+# Events
+ADDOBSTACLE = pygame.USEREVENT + 1
+SCORECOUNT = ADDOBSTACLE + 1
+DURATION = SCORECOUNT + 1
+SPEEDUP = DURATION + 1
+FRAMECHANGE = SPEEDUP + 1
+
+SCORECOUNT_OFFSET = 250
+DURATION_OFFSET = 1000
+SPEEDUP_OFFSET = 4000
+FRAMECHANGE_OFFSET = 75
+
+TIMER_MIN = int(790 * game_scale)
+TIMER_MAX = int(1600 * game_scale)
+
+# Scaling
+PLAYER_SCALE = [1 * GAME_SCALE] * 2
+OBSTACLE_SCALE = [1.5 * GAME_SCALE] * 2
+GLOW_SCALE = [2.3 * ((1 / GAME_SCALE) if GAME_SCALE < 1 else GAME_SCALE)] * 2
